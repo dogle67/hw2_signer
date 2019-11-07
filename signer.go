@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 	"sync"
@@ -9,19 +10,46 @@ import (
 //ExecutePipeline execute piplines
 func ExecutePipeline(jobs ...job) {
 
+	in := make(chan interface{}, 10)
+	out := make(chan interface{}, 10)
+
+	wg := &sync.WaitGroup{}
+	for i := range jobs {
+		wg.Add(1)
+
+		go worker(wg, jobs[i], in, out)
+
+		in = out
+		out = make(chan interface{}, 10)
+	}
+
+	wg.Wait()
+}
+
+func worker(wg *sync.WaitGroup, j job, in, out chan interface{}) {
+	defer wg.Done()
+	defer close(out)
+	j(in, out)
+
 }
 
 //SingleHash single hash
 func SingleHash(in, out chan interface{}) {
-	for i := range in {
 
-		data := i.(string)
-		go singleHash(out, data)
+	wg := &sync.WaitGroup{}
+	for i := range in {
+		data := i.(int)
+		str := fmt.Sprint(data)
+
+		wg.Add(1)
+		go singleHash(wg, out, str)
 	}
+
+	wg.Wait()
 }
 
-func singleHash(out chan interface{}, data string) {
-
+func singleHash(wg *sync.WaitGroup, out chan interface{}, data string) {
+	defer wg.Done()
 	ch1 := make(chan string)
 	ch2 := make(chan string)
 
@@ -32,7 +60,9 @@ func singleHash(out chan interface{}, data string) {
 
 	select {
 	case v := <-ch1:
-		out <- v + "~" + cm
+		rsp := v + "~" + cm
+		fmt.Println(rsp)
+		out <- rsp
 
 	}
 }
@@ -55,13 +85,18 @@ func mdfive(ch chan string, data string) {
 //MultiHash multi hash
 func MultiHash(in, out chan interface{}) {
 
+	wg := &sync.WaitGroup{}
 	for i := range in {
 		data := i.(string)
-		go multiHash(out, data)
+		wg.Add(1)
+		go multiHash(wg, out, data)
 	}
+
+	wg.Wait()
 }
 
-func multiHash(out chan interface{}, data string) {
+func multiHash(wg *sync.WaitGroup, out chan interface{}, data string) {
+	defer wg.Done()
 	chanels := make([]chan string, 6)
 	for i := range chanels {
 		chanels[i] = make(chan string)
